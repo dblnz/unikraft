@@ -82,3 +82,8 @@ pub fn __rust_alloc_error_handler(_size: usize, _align: usize) -> ! {
 
 #[no_mangle]
 static __rust_alloc_error_handler_should_panic: u8 = 1;
+
+// Required by the alloc crate in Rust 1.80+ to confirm the allocator shim is linked.
+#[rustc_std_internal_symbol]
+#[allow(non_upper_case_globals)]
+static __rust_no_alloc_shim_is_unstable_v2: u8 = 0;

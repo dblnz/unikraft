@@ -35,9 +35,8 @@
     allocator_api,
     alloc_error_handler,
     associated_type_defaults,
-    const_mut_refs,
     lang_items,
-    receiver_trait,
+    rustc_attrs,
 )]
 use core;
 
@@ -62,6 +61,5 @@ fn panic(_info: &core::panic::PanicInfo<'_>) -> ! {
 }
 
 #[lang = "eh_personality"]
-#[no_mangle]
-pub extern fn rust_eh_personality() {
+pub extern "C" fn rust_eh_personality() {
 }
