@@ -25,30 +25,30 @@ LIBUKRUST_COMMON_FLAGS = -Zunstable-options --target=$(LIBUKRUST_BASE)/target.js
 
 # Generate rust bindings for the Unikraft API
 #
-# bindings_helper.h pulls in libc headers (e.g. <errno.h> via <uk/alloc.h>).
-# When musl provides libc, those headers are exposed as symlinks created during
-# musl's preparation step ($(LIBMUSL_BUILD)/.prepared).  Both bindgen and musl
-# header preparation are UK_PREPARE targets, which Make runs in parallel under
-# -j with no ordering between them.  If bindgen runs first, clang (with the
-# hermetic -nostdinc) cannot find errno.h and bindgen silently emits an empty
-# output file while still exiting 0 -- the Rust compile then fails later with
-# "not found in bindings".
+# bindings_helper.h pulls in headers such as <stdarg.h> (via uk/print.h) and
+# <errno.h> (via uk/alloc.h).  With -nobuiltininc clang's builtin headers are
+# disabled, so even <stdarg.h> must come from the configured libc; musl provides
+# these as symlinks staged during its fetch/prepare steps.  bindgen is a
+# UK_PREPARE target that Make runs in parallel with library fetch/prepare, so
+# without an explicit edge it can run before those headers exist and fail with
+# e.g. "'stdarg.h' file not found" or "'errno.h' file not found" (proven: the
+# build fails reliably without this ordering).
 #
-# Fix: depend (order-only) on musl having been extracted ($(LIBMUSL_BUILD)/.patched,
-# a UK_FETCH target) AND its libc header symlinks created
-# ($(LIBMUSL_BUILD)/.prepared, a UK_PREPARE target).  Both are required: .prepared
-# alone only creates dangling symlinks into musl's origin tree, which does not exist
-# until .patched has extracted the musl tarball.  kraft runs fetch and prepare
-# concurrently, so without this edge bindgen can run before either completes.
-# Guarded by CONFIG_LIBMUSL and deferred via .SECONDEXPANSION because LIBMUSL_BUILD
-# is only defined once musl's Makefile.uk has been parsed.  The validation below is
-# kept as a safety net.
-$(LIBUKRUST_BUILD)/bindings_generated.rs: $(LIBUKRUST_BASE)/ukrust_sys/bindings_helper.h $(LIBUKLIBID_BUILD)/include/uk/bits/libid.h | $$(if $$(CONFIG_LIBMUSL),$$(LIBMUSL_BUILD)/.patched $$(LIBMUSL_BUILD)/.prepared)
+# Ordering, expressed generically (not musl-specific):
+#   * nolibc provides its headers in-tree, so there is nothing to wait for.
+#   * Any external libc (CONFIG_HAVE_LIBC: musl, newlib, ...) is downloaded and
+#     extracted by the top-level `fetch` target; depend on it (order-only) so the
+#     libc source headers exist before bindgen runs.
+#   * musl additionally stages its headers as symlinks during its prepare step
+#     ($(LIBMUSL_BUILD)/.prepared); wait for that too so the symlinks are valid.
+# Deferred via .SECONDEXPANSION because LIBMUSL_BUILD is only defined once musl's
+# Makefile.uk has been parsed.  The validation below is kept as a safety net.
+$(LIBUKRUST_BUILD)/bindings_generated.rs: $(LIBUKRUST_BASE)/ukrust_sys/bindings_helper.h $(LIBUKLIBID_BUILD)/include/uk/bits/libid.h | $$(if $$(CONFIG_HAVE_LIBC),fetch) $$(if $$(CONFIG_LIBMUSL),$$(LIBMUSL_BUILD)/.prepared)
 	$(call build_cmd, BINDGEN, libukrust, $(notdir $@), \
 		bindgen -o $(LIBUKRUST_BUILD)/bindings_generated.rs --use-core --ctypes-prefix crate::c_types \
 		--with-derive-default --no-debug '.*' --blocklist-type 'uk_arch_x86_64_seg.*' \
 		$(LIBUKRUST_BASE)/ukrust_sys/bindings_helper.h -- $(CINCLUDES) \
-		$(CINCLUDES-y) -nostdinc -isystem $(shell clang -print-resource-dir)/include -DMODULE -D__LIBNAME__=libukrust -D__BASENAME__=bindings_generated.rs \
+		$(CINCLUDES-y) -nobuiltininc -DMODULE -D__LIBNAME__=libukrust -D__BASENAME__=bindings_generated.rs \
 		&& grep -q '__ukrust_sys_malloc' $(LIBUKRUST_BUILD)/bindings_generated.rs \
 		|| { rm -f $(LIBUKRUST_BUILD)/bindings_generated.rs; \
 		     echo "ERROR: bindgen produced incomplete bindings (missing allocator symbols). Retrying may fix this."; \
