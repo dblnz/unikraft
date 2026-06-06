@@ -28,7 +28,11 @@ LIBUKRUST_COMMON_FLAGS = -Zunstable-options --target=$(LIBUKRUST_BASE)/target.js
 # libs generate/stage during fetch+prepare (uk/bits/libid.h from libuklibid; with
 # -nobuiltininc even <stdarg.h>/<errno.h> come from the configured libc, which musl
 # stages as symlinks). Deferred via .SECONDEXPANSION as LIBMUSL_BUILD is set later.
-$(LIBUKRUST_BUILD)/bindings_generated.rs: $(LIBUKRUST_BASE)/ukrust_sys/bindings_helper.h $(LIBUKLIBID_BUILD)/include/uk/bits/libid.h | $$(if $$(CONFIG_HAVE_LIBC),fetch) $$(if $$(CONFIG_LIBMUSL),$$(LIBMUSL_BUILD)/.prepared)
+# NOTE: libid.h is a UK_PREPROCESS target with an order-only `| prepare`, while this
+# rule is a UK_PREPARE target; make therefore reports a benign "Circular
+# .../libid.h <- prepare dependency dropped" and drops that redundant defensive
+# back-edge (build dirs already exist from parse-time mkdir). The build is correct.
+$(LIBUKRUST_BUILD)/bindings_generated.rs: $(LIBUKRUST_BASE)/ukrust_sys/bindings_helper.h | $(LIBUKLIBID_BUILD)/include/uk/bits/libid.h $$(if $$(CONFIG_HAVE_LIBC),fetch) $$(if $$(CONFIG_LIBMUSL),$$(LIBMUSL_BUILD)/.prepared)
 	$(call build_cmd, BINDGEN, libukrust, $(notdir $@), \
 		bindgen -o $(LIBUKRUST_BUILD)/bindings_generated.rs --use-core --ctypes-prefix crate::c_types \
 		--with-derive-default --no-debug '.*' --blocklist-type 'uk_arch_x86_64_seg.*' \
