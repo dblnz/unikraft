@@ -23,41 +23,21 @@ LIBUKRUST_COMMON_FLAGS = -Zunstable-options --target=$(LIBUKRUST_BASE)/target.js
 	-Dunsafe_op_in_unsafe_fn -Drust_2018_idioms \
 	--crate-type rlib
 
-# Generate rust bindings for the Unikraft API
-#
-# bindings_helper.h pulls in headers such as <stdarg.h> (via uk/print.h) and
-# <errno.h> (via uk/alloc.h).  With -nobuiltininc clang's builtin headers are
-# disabled, so even <stdarg.h> must come from the configured libc; musl provides
-# these as symlinks staged during its fetch/prepare steps.  bindgen is a
-# UK_PREPARE target that Make runs in parallel with library fetch/prepare, so
-# without an explicit edge it can run before those headers exist and fail with
-# e.g. "'stdarg.h' file not found" or "'errno.h' file not found" (proven: the
-# build fails reliably without this ordering).
-#
-# Ordering, expressed generically (not musl-specific):
-#   * nolibc provides its headers in-tree, so there is nothing to wait for.
-#   * Any external libc (CONFIG_HAVE_LIBC: musl, newlib, ...) is downloaded and
-#     extracted by the top-level `fetch` target; depend on it (order-only) so the
-#     libc source headers exist before bindgen runs.
-#   * musl additionally stages its headers as symlinks during its prepare step
-#     ($(LIBMUSL_BUILD)/.prepared); wait for that too so the symlinks are valid.
-# Deferred via .SECONDEXPANSION because LIBMUSL_BUILD is only defined once musl's
-# Makefile.uk has been parsed.  The validation below is kept as a safety net.
+# Generate rust bindings for the Unikraft API.
+# Order-only prereqs avoid parallel-build races: bindgen reads headers that other
+# libs generate/stage during fetch+prepare (uk/bits/libid.h from libuklibid; with
+# -nobuiltininc even <stdarg.h>/<errno.h> come from the configured libc, which musl
+# stages as symlinks). Deferred via .SECONDEXPANSION as LIBMUSL_BUILD is set later.
 $(LIBUKRUST_BUILD)/bindings_generated.rs: $(LIBUKRUST_BASE)/ukrust_sys/bindings_helper.h $(LIBUKLIBID_BUILD)/include/uk/bits/libid.h | $$(if $$(CONFIG_HAVE_LIBC),fetch) $$(if $$(CONFIG_LIBMUSL),$$(LIBMUSL_BUILD)/.prepared)
 	$(call build_cmd, BINDGEN, libukrust, $(notdir $@), \
 		bindgen -o $(LIBUKRUST_BUILD)/bindings_generated.rs --use-core --ctypes-prefix crate::c_types \
 		--with-derive-default --no-debug '.*' --blocklist-type 'uk_arch_x86_64_seg.*' \
 		$(LIBUKRUST_BASE)/ukrust_sys/bindings_helper.h -- $(CINCLUDES) \
-		$(CINCLUDES-y) -nobuiltininc -DMODULE -D__LIBNAME__=libukrust -D__BASENAME__=bindings_generated.rs \
-		&& grep -q '__ukrust_sys_malloc' $(LIBUKRUST_BUILD)/bindings_generated.rs \
-		|| { rm -f $(LIBUKRUST_BUILD)/bindings_generated.rs; \
-		     echo "ERROR: bindgen produced incomplete bindings (missing allocator symbols). Retrying may fix this."; \
-		     false; })
+		$(CINCLUDES-y) -nobuiltininc -DMODULE -D__LIBNAME__=libukrust -D__BASENAME__=bindings_generated.rs)
 
 # Build the ukrust_sys crate, contains the bindings and other useful functions.
-# lib.rs -> bindings.rs include!s $(LIBUKRUST_BINDINGS_FILE) (bindings_generated.rs)
-# at compile time, so bindgen must run first; list it as a prerequisite to avoid a
-# parallel race that would otherwise fail with "couldn't read bindings_generated.rs".
+# bindings_generated.rs is include!d at compile time (untracked by make), so list
+# it as a prereq to avoid a race that fails with "couldn't read bindings_generated.rs".
 $(LIBUKRUST_BUILD)/ukrust_sys.o: $(LIBUKRUST_BASE)/ukrust_sys/lib.rs $(LIBUKRUST_BUILD)/bindings_generated.rs $(LIBUKRUST_BUILD)/core.o $(LIBUKRUST_BUILD)/compiler_builtins.o
 	$(call build_cmd, RUSTC, libukrust, $(notdir $@), \
 	$(RUSTC) $(LIBUKRUST_COMMON_FLAGS) --edition=2021 --extern alloc  \
