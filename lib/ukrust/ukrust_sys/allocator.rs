@@ -83,7 +83,13 @@ pub fn __rust_alloc_error_handler(_size: usize, _align: usize) -> ! {
 #[no_mangle]
 static __rust_alloc_error_handler_should_panic: u8 = 1;
 
-// Required by the alloc crate in Rust 1.80+ to confirm the allocator shim is linked.
+// Required by the alloc crate to confirm the allocator shim is linked.
+// Since Rust nightly 2026+, the compiler emits a `call` to this symbol
+// (rather than a read), so it must be a function, not a static byte.
+#[rustc_std_internal_symbol]
+fn __rust_no_alloc_shim_is_unstable_v2() {}
+
+// Keep the v1 static for older toolchains that may still reference it.
 #[rustc_std_internal_symbol]
 #[allow(non_upper_case_globals)]
-static __rust_no_alloc_shim_is_unstable_v2: u8 = 0;
+static __rust_no_alloc_shim_is_unstable: u8 = 0;
