@@ -4,6 +4,10 @@ name = "ukrust"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "ukrust"
+path = "ukrust_sys/lib.rs"
+
 [profile.dev]
 panic = "abort"
 lto = "no"
