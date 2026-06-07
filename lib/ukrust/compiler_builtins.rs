@@ -132,6 +132,15 @@ define_panicking_intrinsics!("`f64` should not be used", {
     __unorddf2,
 });
 
+define_panicking_intrinsics!("`f16` should not be used", {
+    __extendhfsf2,
+    __extendhfdf2,
+    __truncsfhf2,
+    __truncdfhf2,
+    __gnu_h2f_ieee,
+    __gnu_f2h_ieee,
+});
+
 define_panicking_intrinsics!("`i128` should not be used", {
     __ashrti3,
     __muloti4,
